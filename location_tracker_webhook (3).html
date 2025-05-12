@@ -1,0 +1,180 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Śledzenie Lokalizacji</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        h1 {
+            color: #333;
+        }
+        #location {
+            margin: 20px 0;
+            font-size: 18px;
+            color: #0066cc;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>Śledzenie Lokalizacji</h1>
+    <p>Kliknij, aby rozpocząć/zatrzymać automatyczne śledzenie:</p>
+    <button onclick="toggleTracking()">Rozpocznij Śledzenie</button>
+    <div id="location">Lokalizacja: ---</div>
+    <div id="mapLink"></div>
+
+    <script>
+        let trackingInterval = null;
+        const WEBHOOK_URL = 'https://webhook.site/e47a5d6b-9b4b-45ee-ab60-e6bafe99df8a';
+
+        function toggleTracking() {
+            if (trackingInterval) {
+                clearInterval(trackingInterval);
+                trackingInterval = null;
+                document.querySelector("button").textContent = "Rozpocznij Śledzenie";
+                document.getElementById("location").innerHTML = "Śledzenie zatrzymane";
+            } else {
+                getLocation();
+                trackingInterval = setInterval(getLocation, 60 * 1000); // Co 1 minutę
+                document.querySelector("button").textContent = "Zatrzymaj Śledzenie";
+            }
+        }
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(showPosition, showError, { timeout: 10000 });
+            } else {
+                document.getElementById("location").innerHTML = "Twoja przeglądarka nie obsługuje geolokalizacji.";
+            }
+        }
+
+        function showPosition(position) {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            const locationText = `Szerokość: ${lat.toFixed(4)}, Długość: ${lon.toFixed(4)}`;
+            const mapUrl = `https://www.google.com/maps?q=${lat},${lon}`;
+
+            document.getElementById("location").innerHTML = `Lokalizacja: ${locationText}`;
+            document.getElementById("mapLink").innerHTML = `<a href="${mapUrl}" target="_blank">Otwórz w Mapach Google</a>`;
+
+            // Sprawdzenie połączenia internetowego
+            if (!navigator.onLine) {
+                document.getElementById("location").innerHTML += "<br>Brak połączenia internetowego.";
+                return;
+            }
+
+            // Wysłanie lokalizacji za pomocą XMLHttpRequest
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', WEBHOOK_URL, true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('Accept', 'application/json');
+
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        document.getElementById("location").innerHTML += "<br>Dane wysłane pomyślnie.";
+                    } else {
+                        document.getElementById("location").innerHTML += `<br>Błąd wysyłania: Status ${xhr.status}, ${xhr.statusText}`;
+                    }
+                }
+            };
+
+            xhr.onerror = function () {
+                document.getElementById("location").innerHTML += "<br>Błąd wysyłania: Problem z połączeniem lub CORS.";
+            };
+
+            const data = JSON.stringify({
+                latitude: lat,
+                longitude: lon,
+                map_url: mapUrl,
+                timestamp: new Date().toISOString()
+            });
+
+            try {
+                xhr.send(data);
+            } catch (err) {
+                document.getElementById("location").innerHTML += `<br>Błąd wysyłania: ${err.message}`;
+            }
+        }
+
+        function showError(error) {
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    document.getElementById("location").innerHTML = "Brak zgody na dostęp do lokalizacji.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    document.getElementById("location").innerHTML = "Lokalizacja niedostępna. Włącz GPS.";
+                    break;
+                case error.TIMEOUT:
+                    document.getElementById("location").innerHTML = "Przekroczono czas oczekiwania na lokalizację.";
+                    break;
+                default:
+                    document.getElementById("location").innerHTML = "Wystąpił nieznany błąd: " + error.message;
+            }
+        }
+    </script>
+</body>
+</html>
