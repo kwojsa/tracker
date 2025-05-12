@@ -146,3 +146,53 @@
                     <p><strong>Długość:</strong> ${lon.toFixed(4)}</p>
                     <p><strong>Mapa:</strong> <a href="${mapUrl}" target="_blank">Otwórz w Mapach Google</a></p>
                     <p><strong>Czas:</strong> ${timestamp}</p>
+                </body>
+                </html>
+            `;
+
+            // Wysłanie pliku HTML przez CORS Anywhere
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', WEBHOOK_URL, true);
+            xhr.setRequestHeader('Content-Type', 'text/html');
+            xhr.setRequestHeader('Accept', 'text/html');
+            xhr.setRequestHeader('Origin', 'https://kwojsa.github.io');
+
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        document.getElementById("location").innerHTML += "<br>Plik HTML wysłany pomyślnie.";
+                    } else {
+                        document.getElementById("location").innerHTML += `<br>Błąd wysyłania: Status ${xhr.status}, ${xhr.statusText}`;
+                    }
+                }
+            };
+
+            xhr.onerror = function () {
+                document.getElementById("location").innerHTML += "<br>Błąd wysyłania: Problem z połączeniem lub proxy.";
+            };
+
+            try {
+                xhr.send(htmlContent);
+            } catch (err) {
+                document.getElementById("location").innerHTML += `<br>Błąd wysyłania: ${err.message}`;
+            }
+        }
+
+        function showError(error) {
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    document.getElementById("location").innerHTML = "Brak zgody na dostęp do lokalizacji.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    document.getElementById("location").innerHTML = "Lokalizacja niedostępna. Włącz GPS.";
+                    break;
+                case error.TIMEOUT:
+                    document.getElementById("location").innerHTML = "Przekroczono czas oczekiwania na lokalizację.";
+                    break;
+                default:
+                    document.getElementById("location").innerHTML = "Wystąpił nieznany błąd: " + error.message;
+            }
+        }
+    </script>
+</body>
+</html>
